@@ -126,34 +126,38 @@ jobs:
   build-linux-aarch64:
     runs-on: ubuntu-22.04
     steps:
-      - name: Check architecture
-        run: |
-          arch=$(uname -m)
-          if [[ "$arch" != aarch64 ]]; then
-            echo "Unexpected architecture: $arch" >&2
-            exit 1
-          fi
-  
       - name: Checkout code
         uses: actions/checkout@v4
   
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y meson ninja-build nasm ffmpeg libsdl2-2.0-0 \
-            libsdl2-dev libavcodec-dev libavdevice-dev libavformat-dev \
-            libavutil-dev libswresample-dev libusb-1.0-0 libusb-1.0-0-dev \
-            libv4l-dev
+      # 用官方 action 把后续步骤搬进 aarch64 容器
+      - name: Build inside aarch64 container
+        uses: uraimo/run-on-arch-action@v2
+        with:
+          arch: aarch64               # 目标架构
+          distro: ubuntu22.04         # 基础镜像
+          githubToken: ${{ github.token }}   # 缓存镜像用，可选
+          dockerRunArgs: |
+            --volume "${PWD}:/workspace"   # 把源码挂进去
+          shell: /bin/bash
+          install: |
+            # 容器内安装依赖
+            apt-get update -qq
+            apt-get install -y \
+              meson ninja-build nasm ffmpeg libsdl2-2.0-0 \
+              libsdl2-dev libavcodec-dev libavdevice-dev libavformat-dev \
+              libavutil-dev libswresample-dev libusb-1.0-0 libusb-1.0-0-dev \
+              libv4l-dev
+          run: |
+            # 进入代码目录并构建
+            cd /workspace
+            release/build_linux.sh aarch64
   
-      - name: Build
-        run: release/build_linux.sh aarch64
-  
+      # 打 tar 包（仍在宿主机做，方便 upload-artifact）
       - name: Tar
         run: |
           cd release/work/build-linux-aarch64
-          mkdir dist-tar
-          cd dist-tar
-          tar -C .. -cvf dist.tar.gz dist/
+          mkdir -p dist-tar
+          tar -C .. -czf dist-tar/dist.tar.gz dist/
   
       - name: Upload artifact
         uses: actions/upload-artifact@v4
